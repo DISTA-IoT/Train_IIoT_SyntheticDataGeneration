@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.model_selection import train_test_split
-
+import pickle
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
@@ -103,7 +103,8 @@ def main():
     plt.savefig('boundary_attacks/manifold.png', dpi=150, bbox_inches='tight')
     plt.show()
 
-
+    with open('boundary_attacks/training_scaler.pkl', 'wb') as f:
+        pickle.dump(train_scaler, f)
     torch.save(anomaly_classifier, 'boundary_attacks/anomaly_classifier.pt')
 
 if __name__ == '__main__':
