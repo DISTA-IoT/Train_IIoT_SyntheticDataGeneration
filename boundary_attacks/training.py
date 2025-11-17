@@ -20,15 +20,7 @@ columns_to_generate = [
 ]
 
 
-columns_to_keep = [
-    'Durata',
-    'ldvveltreno',
-    'HMI_Iline',
-    'ldvvelimps',
-    'MDS_LedLimVel',
-    '_GPS_LAT',
-    '_GPS_LON',
-]
+
 
 
 def main():
