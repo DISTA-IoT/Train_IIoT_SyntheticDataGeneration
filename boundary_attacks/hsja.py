@@ -2,6 +2,17 @@ import time
 import torch
 import numpy as np
 
+
+def random_tangent_direction(gradient):
+        """Return a random unit vector orthogonal to the gradient."""
+        v = np.random.randn(*gradient.shape)
+        v -= v.dot(gradient) * gradient        # remove projection onto gradient
+        norm = np.linalg.norm(v)
+        if norm < 1e-9:
+            return random_tangent_direction(gradient)  # retry
+        return v / norm
+
+
 class HSJAWithTracking:
     """
     HSJA personalizzato con tracking completo delle query
@@ -35,6 +46,7 @@ class HSJAWithTracking:
 
         return pred
 
+
     def binary_search(self, x0, x1, epsilon=0.01, max_iter=20):
         """Binary search"""
         label0 = self.predict(x0)
@@ -42,16 +54,14 @@ class HSJAWithTracking:
         for _ in range(max_iter):
             if np.linalg.norm(x1 - x0) < epsilon:
                 break
-
             x_mid = (x0 + x1) / 2
             label_mid = self.predict(x_mid)
 
-            if label_mid == label0:
-                x0 = x_mid
-            else:
-                x1 = x_mid
+            if label_mid == label0: x0 = x_mid
+            else: x1 = x_mid
 
         return (x0 + x1) / 2
+
 
     def estimate_gradient(self, x_boundary, n_samples=30):
         """Stima gradiente/normale alla frontiera"""
@@ -69,9 +79,6 @@ class HSJAWithTracking:
             for t in [-epsilon, -epsilon/2, 0, epsilon/2, epsilon]:
                 x_test = x_boundary + t * direction
 
-                if x_test[0] < 10 or x_test[0] > 50 or x_test[1] < 0 or x_test[1] > 6:
-                    continue
-
                 if self.predict(x_test) != label_boundary:
                     crossings += 1
 
@@ -83,6 +90,7 @@ class HSJAWithTracking:
         gradient = gradient / (np.linalg.norm(gradient) + 1e-9)
 
         return gradient
+
 
     def find_initial_adversarial(self, x_start, max_attempts=50):
         """Trova adversarial iniziale"""
@@ -98,6 +106,7 @@ class HSJAWithTracking:
                 return x_random
 
         return None
+
 
     def attack(self, x_start, n_iterations=100):
         """Attacco HSJA completo"""
@@ -132,62 +141,47 @@ class HSJAWithTracking:
             if self.query_count >= self.max_queries:
                 break
 
-            # Stima gradiente
+            # 1. Estimate gradient normal to the boundary
             gradient = self.estimate_gradient(x_current)
 
-            # Generate a random vector
-            rand_vec = np.random.randn(*gradient.shape)
+            # 2. Generate a tangent direction for ANY dimension
+            tangent = random_tangent_direction(gradient)
 
-            # Project it onto the hyperplane orthogonal to the gradient
-            rand_vec -= rand_vec.dot(gradient) * gradient
-
-            # Normalize to get a unit tangent direction
-            tangent = rand_vec / (np.linalg.norm(rand_vec) + 1e-9)
-
-            # Movimento alternato
+            # 3. Alternating direction strategy 
             direction = tangent if iteration % 2 == 0 else -tangent
 
-            # Step adattivo
+            # 4. Adaptive step
             step_size = 1.5 * (0.92 ** (iteration // 5))
-
             x_next = x_current + step_size * direction
 
-            # Bounds
-            if x_next[0] < 10 or x_next[0] > 50 or x_next[1] < 0 or x_next[1] > 6:
-                x_next = x_current - step_size * direction
-
-                if x_next[0] < 10 or x_next[0] > 50 or x_next[1] < 0 or x_next[1] > 6:
-                    continue
+            # 5. Bounds handling
+            x_next = np.clip(x_next, self.X.min(0), self.X.max(0))
 
             label_current = self.predict(x_current)
             label_next = self.predict(x_next)
 
+            # 6. If class changes, project back to boundary
             if label_next != label_current:
                 # Boundary crossing
                 x_boundary_new = self.binary_search(x_current, x_next)
 
-                is_dup = False
-                for existing in self.boundary_points:
-                    if np.linalg.norm(x_boundary_new - existing) < 0.05:
-                        is_dup = True
-                        break
-
-                if not is_dup:
+                # avoid duplicates
+                if not any(np.linalg.norm(x_boundary_new - p) < 1e-3
+                        for p in self.boundary_points):
                     self.boundary_points.append(x_boundary_new)
-                    x_current = x_boundary_new
+                x_current = x_boundary_new
 
-                    if self.verbose and len(self.boundary_points) % 5 == 0:
-                        print(f"   Iter {iteration+1}: {len(self.boundary_points)} punti")
             else:
                 x_current = x_next
 
-            # Ri-proiezione periodica
+            if self.verbose and len(self.boundary_points) % 5 == 0:
+                        print(f"   Iter {iteration+1}: {len(self.boundary_points)} punti")
+
+            # 7. Periodic reprojection toward boundary
             if iteration % 10 == 0 and iteration > 0:
                 for alpha in [0.2, 0.5, 1.0]:
                     x_probe = x_current + alpha * gradient
-
-                    if x_probe[0] < 10 or x_probe[0] > 50 or x_probe[1] < 0 or x_probe[1] > 6:
-                        continue
+                    x_probe = np.clip(x_probe, self.X.min(0), self.X.max(0))
 
                     if self.predict(x_probe) != label_current:
                         x_current = self.binary_search(x_current, x_probe)
