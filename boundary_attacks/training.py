@@ -20,7 +20,31 @@ columns_to_generate = [
 ]
 
 
+columns_to_keep = [
+    'Durata',
+    'ldvveltreno',
+    'HMI_Iline',
+    'ldvvelimps',
+    'MDS_LedLimVel',
+    '_GPS_LAT',
+    '_GPS_LON',
+]
+
+
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Training anomaly detector')
+    
+    parser.add_argument(
+        '--epochs',
+        type=int, 
+        help='Number of training epochs',
+        default=10)
+    
+    args = parser.parse_args()
+
+    epochs = args.epochs
 
     dataset_new = pd.read_csv('boundary_attacks/anomalies_ds.csv')
     dataset_new['Timestamp'] = pd.to_datetime(dataset_new['Timestamp'], errors='coerce')
@@ -67,7 +91,7 @@ def main():
     test_dataloader = torch.utils.data.DataLoader(
         test_dataset, batch_size=32, shuffle=False)
 
-    for epoch in range(50):
+    for epoch in range(epochs):
         anomaly_classifier.train()
         for x, y in train_dataloader:
             optimizer.zero_grad()
