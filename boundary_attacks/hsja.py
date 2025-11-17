@@ -63,7 +63,7 @@ class HSJAWithTracking:
 
         return pred, hidden
 
-    def binary_search(self, x0, x1, epsilon=0.01, max_iter=20):
+    def binary_search(self, x0, x1, epsilon=0.01, max_iter=400):
         """Binary search"""
         label0 = self.predict(x0)
 
@@ -125,7 +125,7 @@ class HSJAWithTracking:
         return None, None
 
 
-    def attack(self, x_start, n_iterations=100):
+    def attack(self, x_start, n_iterations=100, periodic_reprojection=10):
         """Attacco HSJA completo"""
         start_time = time.time()
 
@@ -174,18 +174,19 @@ class HSJAWithTracking:
                 # Boundary crossing
                 x_boundary_new = self.binary_search(x_current, x_next)
                 # avoid duplicates
-                if not any(np.linalg.norm(x_boundary_new - p) < 1e-3
-                        for p in self.boundary_points):
+                if not any(np.linalg.norm(x_boundary_new - p) < 1e-3 for p in self.boundary_points):
                     self.boundary_points.append(x_boundary_new)
+                else: 
+                    print("   Duplicato")
                 x_current = x_boundary_new
             else:
                 x_current = x_next
 
-            if self.verbose and len(self.boundary_points) % 5 == 0:
+            if self.verbose and iteration % 5 == 0:
                         print(f"   Iter {iteration+1}: {len(self.boundary_points)} punti")
 
             # 7. Periodic reprojection toward boundary
-            if iteration % 10 == 0 and iteration > 0:
+            if iteration % periodic_reprojection == 0 and iteration > 0:
                 for alpha in [0.2, 0.5, 1.0]:
                     x_probe = x_current + alpha * gradient
                     x_probe = np.clip(x_probe, self.X.min(0), self.X.max(0))

@@ -48,7 +48,7 @@ def read_model(model_path):
     return anomaly_classifier
 
 
-def attack(model, scaler_path, X, Y, n_iterations, max_queries):
+def attack(model, scaler_path, X, Y, n_iterations, max_queries, periodic_reprojection):
     
     print("\n" + "="*70)
     print("ESECUZIONE ATTACCO HSJA")
@@ -60,7 +60,7 @@ def attack(model, scaler_path, X, Y, n_iterations, max_queries):
     x_start = X.mean(0)
     model.eval()
     hsja = HSJAWithTracking(model, X, scaler, max_queries=max_queries, verbose=True)
-    boundary_points = hsja.attack(x_start, n_iterations=n_iterations)
+    boundary_points = hsja.attack(x_start, n_iterations=n_iterations, periodic_reprojection=periodic_reprojection)
 
     return boundary_points
 
@@ -101,6 +101,13 @@ if __name__ == '__main__':
         help='Maximum number of queries to perform',
         default=500)
 
+    parser.add_argument(
+        '--periodic_reprojection',
+        type=int,
+        help='Periodic reprojection',
+        default=10
+    )
+
     args = parser.parse_args()
 
     n_iterations = args.n_iterations
@@ -108,6 +115,7 @@ if __name__ == '__main__':
     train_path = args.train_path
     max_queries = args.max_queries
     scaler_path = args.scaler_path
+    periodic_reprojection = args.periodic_reprojection
 
     print("All arguments:")
     for key, value in vars(args).items():
@@ -117,7 +125,7 @@ if __name__ == '__main__':
     model = read_model(model_path)
     
 
-    attack(model, scaler_path, X, y, n_iterations, max_queries)
+    attack(model, scaler_path, X, y, n_iterations, max_queries, periodic_reprojection)
     
 
     

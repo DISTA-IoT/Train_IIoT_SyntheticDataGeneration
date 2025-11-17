@@ -16,7 +16,8 @@
                 "--model_path", "boundary_attacks/anomaly_classifier.pt",
                 "--train_path", "boundary_attacks/anomalies_ds.csv",
                 "--scaler_path", "boundary_attacks/training_scaler.pkl",
-                "--max_queries", "5000"
+                "--max_queries", "5000",
+                "--periodic_reprojection", "1"
             ]
         },
         {
