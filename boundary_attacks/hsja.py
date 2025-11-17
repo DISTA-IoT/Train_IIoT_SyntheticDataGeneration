@@ -1,10 +1,14 @@
+import time
+import torch
+import numpy as np
+
 class HSJAWithTracking:
     """
     HSJA personalizzato con tracking completo delle query
     Implementazione semplificata del paper originale
     """
 
-    def __init__(self, model, scaler, max_queries=500, verbose=True):
+    def __init__(self, model, X, scaler, max_queries=500, verbose=True):
         self.model = model
         self.scaler = scaler
         self.max_queries = max_queries
@@ -12,6 +16,7 @@ class HSJAWithTracking:
         self.query_count = 0
         self.boundary_points = []
         self.all_queries = []
+        self.X = X
 
     def predict(self, x):
         """Query con tracking"""
@@ -53,7 +58,7 @@ class HSJAWithTracking:
         label_boundary = self.predict(x_boundary)
 
         # Direzioni casuali
-        directions = np.random.randn(n_samples, X.shape[1])
+        directions = np.random.randn(n_samples, self.X.shape[1])
         directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
 
         epsilon = 0.05
@@ -87,7 +92,7 @@ class HSJAWithTracking:
             if self.query_count >= self.max_queries * 0.2:
                 return None
 
-            x_random = np.random.uniform(X.min(0), X.max(0))
+            x_random = np.random.uniform(self.X.min(0), self.X.max(0))
 
             if self.predict(x_random) != label_start:
                 return x_random
@@ -130,8 +135,14 @@ class HSJAWithTracking:
             # Stima gradiente
             gradient = self.estimate_gradient(x_current)
 
-            # Tangente (ortogonale)
-            tangent = np.array([-gradient[1], gradient[0]])
+            # Generate a random vector
+            rand_vec = np.random.randn(*gradient.shape)
+
+            # Project it onto the hyperplane orthogonal to the gradient
+            rand_vec -= rand_vec.dot(gradient) * gradient
+
+            # Normalize to get a unit tangent direction
+            tangent = rand_vec / (np.linalg.norm(rand_vec) + 1e-9)
 
             # Movimento alternato
             direction = tangent if iteration % 2 == 0 else -tangent

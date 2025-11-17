@@ -6,7 +6,7 @@
     "configurations": [
 
         {
-            "name": "HSJA",
+            "name": "ATTACK",
             "type": "debugpy",
             "request": "launch",
             "program": "boundary_attacks/attack.py",

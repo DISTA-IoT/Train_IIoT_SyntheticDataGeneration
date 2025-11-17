@@ -105,7 +105,7 @@ def main():
 
     with open('boundary_attacks/training_scaler.pkl', 'wb') as f:
         pickle.dump(train_scaler, f)
-    torch.save(anomaly_classifier, 'boundary_attacks/anomaly_classifier.pt')
+    torch.save(anomaly_classifier.state_dict(), 'boundary_attacks/anomaly_classifier.pt')
 
 if __name__ == '__main__':
     main()
