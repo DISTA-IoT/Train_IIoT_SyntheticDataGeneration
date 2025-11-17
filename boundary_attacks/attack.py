@@ -109,6 +109,10 @@ if __name__ == '__main__':
     max_queries = args.max_queries
     scaler_path = args.scaler_path
 
+    print("All arguments:")
+    for key, value in vars(args).items():
+        print(f"  {key}: {value}")
+
     X, y = read_data(train_path)
     model = read_model(model_path)
     

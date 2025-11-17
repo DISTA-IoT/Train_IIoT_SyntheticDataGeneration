@@ -10,7 +10,14 @@
             "type": "debugpy",
             "request": "launch",
             "program": "boundary_attacks/attack.py",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "args": [
+                "--n_iterations", "300",
+                "--model_path", "boundary_attacks/anomaly_classifier.pt",
+                "--train_path", "boundary_attacks/anomalies_ds.csv",
+                "--scaler_path", "boundary_attacks/training_scaler.pkl",
+                "--max_queries", "5000"
+            ]
         },
         {
             "name": "Training",

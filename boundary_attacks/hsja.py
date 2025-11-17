@@ -46,6 +46,22 @@ class HSJAWithTracking:
 
         return pred
 
+    def predict_with_tracking(self, x):
+        """Query con tracking"""
+        self.query_count += 1
+        x_scaled = self.scaler.transform(x.reshape(1, -1))
+        x_scaled = torch.from_numpy(x_scaled).float()
+        pred, hidden = self.model(x_scaled)
+        pred = torch.argmax(pred, dim=1)
+        
+        self.all_queries.append({
+            'point': x.copy(),
+            'hidden': hidden,
+            'prediction': pred,
+            'query_num': self.query_count
+        })
+
+        return pred, hidden
 
     def binary_search(self, x0, x1, epsilon=0.01, max_iter=20):
         """Binary search"""
@@ -94,39 +110,39 @@ class HSJAWithTracking:
 
     def find_initial_adversarial(self, x_start, max_attempts=50):
         """Trova adversarial iniziale"""
-        label_start = self.predict(x_start)
+        label_start, hidden = self.predict_with_tracking(x_start)
 
         for _ in range(max_attempts):
-            if self.query_count >= self.max_queries * 0.2:
+            if self.query_count >= self.max_queries * 0.5:
                 return None
 
             x_random = np.random.uniform(self.X.min(0), self.X.max(0))
 
-            if self.predict(x_random) != label_start:
-                return x_random
+            output, hidden = self.predict_with_tracking(x_random)
+            if output != label_start:
+                return x_random, hidden
 
-        return None
+        return None, None
 
 
     def attack(self, x_start, n_iterations=100):
         """Attacco HSJA completo"""
         start_time = time.time()
 
-        label_start = self.predict(x_start)
-
         if self.verbose:
             print(f"\n[Inizializzazione] Ricerca adversarial iniziale...")
-            print(f"   Start (manifold)={x_start[0]:.1f}, V={x_start[1]:.2f}")
+            _, manifold = self.model(torch.from_numpy(self.scaler.transform(x_start.reshape(1, -1))).float())
+            print(f"   Start (manifold)={manifold.squeeze()[0]:.1f}, V={manifold.squeeze()[1]:.2f}")
 
         # Trova adversarial
-        x_adv = self.find_initial_adversarial(x_start)
+        x_adv, manifold= self.find_initial_adversarial(x_start)
 
         if x_adv is None:
             print("   ✗ Adversarial iniziale non trovato")
             return np.array([])
 
         if self.verbose:
-            print(f"   ✓ Adversarial: T={x_adv[0]:.1f}°C, V={x_adv[1]:.2f}Hz")
+            print(f"   ✓ Adversarial: T={manifold.squeeze()[0]:.1f}°C, V={manifold.squeeze()[1]:.2f}Hz")
 
         # Proietta su boundary
         x_boundary = self.binary_search(x_start, x_adv)
@@ -138,39 +154,30 @@ class HSJAWithTracking:
         x_current = x_boundary
 
         for iteration in range(n_iterations):
-            if self.query_count >= self.max_queries:
-                break
-
+            # stop condition
+            if self.query_count >= self.max_queries: break
             # 1. Estimate gradient normal to the boundary
             gradient = self.estimate_gradient(x_current)
-
             # 2. Generate a tangent direction for ANY dimension
             tangent = random_tangent_direction(gradient)
-
             # 3. Alternating direction strategy 
             direction = tangent if iteration % 2 == 0 else -tangent
-
             # 4. Adaptive step
             step_size = 1.5 * (0.92 ** (iteration // 5))
             x_next = x_current + step_size * direction
-
             # 5. Bounds handling
             x_next = np.clip(x_next, self.X.min(0), self.X.max(0))
-
             label_current = self.predict(x_current)
             label_next = self.predict(x_next)
-
             # 6. If class changes, project back to boundary
             if label_next != label_current:
                 # Boundary crossing
                 x_boundary_new = self.binary_search(x_current, x_next)
-
                 # avoid duplicates
                 if not any(np.linalg.norm(x_boundary_new - p) < 1e-3
                         for p in self.boundary_points):
                     self.boundary_points.append(x_boundary_new)
                 x_current = x_boundary_new
-
             else:
                 x_current = x_next
 
