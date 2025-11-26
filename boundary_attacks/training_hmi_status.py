@@ -8,9 +8,11 @@ from sklearn.preprocessing import MinMaxScaler
 import torch
 import torch.optim as optim
 from modules import MLP
+from sklearn.utils import resample
+import numpy as np
 
-columns_to_generate = [
-    'Durata','CabEnabled_M1', 'CabEnabled_M8', 'ERTMS_PiastraSts', 'HMI_ACPntSts_T2', 'HMI_ACPntSts_T7', 'HMI_DCPntSts_T2',
+feats = [
+    'Durata','CabEnabled_M1', 'CabEnabled_M8', 'HMI_ACPntSts_T2', 'HMI_ACPntSts_T7', 'HMI_DCPntSts_T2',
     'HMI_DCPntSts_T7', 'HMI_Iline', 'HMI_Irsts_T2', 'HMI_Irsts_T7', 'HMI_VBatt_T2', 'HMI_VBatt_T4', 'HMI_VBatt_T5',
     'HMI_VBatt_T7', 'HMI_Vline', 'HMI_impSIL', 'LineVoltType', 'MDS_LedLimVel', 'MDS_StatoMarcia', '_GPS_LAT',
     '_GPS_LON', 'ldvvelimps', 'ldvveltreno', 'usB1BCilPres_M1', 'usB1BCilPres_M3', 'usB1BCilPres_M6', 'usB1BCilPres_M8',
@@ -19,8 +21,25 @@ columns_to_generate = [
     'usBpPres', 'usMpPres'
 ]
 
+label = 'ERTMS_PiastraSts'
 
+def resample_to_percentages(X, y, percentages):
+    X0, X1, X2 = X[y == 0], X[y == 1], X[y == 2]
+    
+    p0, p1, p2 = percentages
+    N_total = len(y)
+    N0 = int(p0 * N_total)
+    N1 = int(p1 * N_total)
+    N2 = int(p2 * N_total)
 
+    X0_r, y0_r = resample(X0, np.zeros(len(X0)), n_samples=N0, replace=True)
+    X1_r, y1_r = resample(X1, np.ones(len(X1)), n_samples=N1, replace=True)
+    X2_r, y2_r = resample(X2, np.full(len(X2), 2), n_samples=N2, replace=True)
+
+    X_res = np.vstack([X0_r, X1_r, X2_r])
+    y_res = np.hstack([y0_r, y1_r, y2_r])
+
+    return X_res, y_res
 
 
 def main():
@@ -32,48 +51,62 @@ def main():
         '--epochs',
         type=int, 
         help='Number of training epochs',
-        default=10)
+        default=3)
     
+    parser.add_argument(
+        '--percentages',
+        type=float,
+        nargs=3,
+        help='List of three percentages (normal, anomaly, fault)',
+        default=[0.9, 0.08, 0.02]
+    )
+
     args = parser.parse_args()
 
     epochs = args.epochs
+    class_weights = args.percentages
 
-    dataset_new = pd.read_csv('boundary_attacks/anomalies_ds.csv')
+    dataset = pd.read_csv('dataset.csv')
+    print('intial dataset len', len(dataset), 'column num', len(dataset.columns))
+    dataset_new = dataset.copy()
     dataset_new['Timestamp'] = pd.to_datetime(dataset_new['Timestamp'], errors='coerce')
+    # timestamp will be essential
+    dataset_new = dataset_new.dropna(subset=['Timestamp'])
+    print("label counts", dataset_new[label].value_counts())
+    # repeated signals:
+    dataset_new = dataset_new.drop_duplicates(subset=['Descrizione', 'Timestamp'])
+    dataset_new.set_index('Timestamp', inplace=True)
+    dataset_new = dataset_new.dropna(axis=1, how='all')
+    dataset_new = dataset_new.dropna()
+    print('after first filtering dataset len', len(dataset_new), 'column num', len(dataset_new.columns))
 
-    event_occurrences = dataset_new['Descrizione'].value_counts()
-    eventi_totali = len(event_occurrences)
-
-    print(f'nel nostro dataset abbiamo {eventi_totali} TIPI DI EVENTI diversi')
-    record_totali = len(dataset_new)
-    print(f'sparsi in un totale di {record_totali} record')
-
-    record_anomalie = len(dataset_new[dataset_new['anomaly']])
-    print(f'di cui {record_anomalie} corrispondono ad anomalie')
-
-    X = dataset_new[columns_to_generate].values
+    Y = dataset_new[label].astype(int).values
+    X = dataset_new[feats].values
 
     anomaly_classifier = MLP(
         **{
             'input_dim': X.shape[1],
-            'output_dim': 2,
+            'output_dim': 3,
             'layer_norm': True,
             'mode':'OF'})
 
 
-    Y = dataset_new['anomaly'].astype(int).values
+    
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    X_train_resampled, Y_train_resampled = resample_to_percentages(
+            X_train, Y_train, class_weights
+        )
 
     train_scaler = MinMaxScaler()
-    X_train_scaled = train_scaler.fit_transform(X_train)
+    X_train_scaled_resampled = train_scaler.fit_transform(X_train_resampled)
     X_test_scaled = train_scaler.transform(X_test)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(anomaly_classifier.parameters(), lr=0.001)
 
     train_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(X_train_scaled).float(),
-        torch.tensor(Y_train).long())
+        torch.tensor(X_train_scaled_resampled).float(),
+        torch.tensor(Y_train_resampled).long())
     test_dataset = torch.utils.data.TensorDataset(
         torch.tensor(X_test_scaled).float(),
         torch.tensor(Y_test).long())
@@ -103,11 +136,15 @@ def main():
         print(f'Epoch {epoch+1}, Test Accuracy: {accuracy:.4f}')
 
 
+    # final plot:
     all_X_scaled = train_scaler.transform(X)
     all_X_scaled = torch.Tensor(all_X_scaled).float()
     anomaly_classifier.eval()
     all_preds, manifold = anomaly_classifier(all_X_scaled)
-    all_preds = (torch.sigmoid(output.squeeze()) > 0.5).long()
+    all_preds = torch.argmax(all_preds, dim=1)
+    all_correct = (all_preds == Y).sum().item()
+    all_accuracy = all_correct / len(Y)
+    print("Accuracy finale: ", all_accuracy)
     manifold = manifold.numpy()
 
     plt.figure(figsize=(10, 8))

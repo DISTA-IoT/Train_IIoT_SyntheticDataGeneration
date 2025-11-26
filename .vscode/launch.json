@@ -24,7 +24,7 @@
             "name": "Training",
             "type": "debugpy",
             "request": "launch",
-            "program": "boundary_attacks/training.py",
+            "program": "boundary_attacks/training_hmi_status.py",
             "console": "integratedTerminal"
         }
     ]
