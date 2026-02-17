@@ -9,22 +9,21 @@
             "name": "ATTACK",
             "type": "debugpy",
             "request": "launch",
-            "program": "boundary_attacks/attack.py",
+            "program": "boundary_attacks/attack_hmi_status.py",
             "console": "integratedTerminal",
             "args": [
                 "--n_iterations", "300",
                 "--model_path", "boundary_attacks/anomaly_classifier.pt",
-                "--train_path", "boundary_attacks/anomalies_ds.csv",
                 "--scaler_path", "boundary_attacks/training_scaler.pkl",
                 "--max_queries", "5000",
-                "--periodic_reprojection", "1"
+                "--periodic_reprojection", "10"
             ]
         },
         {
             "name": "Training",
             "type": "debugpy",
             "request": "launch",
-            "program": "boundary_attacks/training.py",
+            "program": "boundary_attacks/training_hmi_status.py",
             "console": "integratedTerminal"
         }
     ]
